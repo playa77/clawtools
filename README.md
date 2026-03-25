@@ -7,6 +7,12 @@ A collection of agent skills for OpenClaw / ClawHub. Each skill is a self-contai
 | Skill | Description |
 |-------|-------------|
 | [semver_engine](semver_engine/) | Deterministic semver parse/compare/bump/validate/constraint-check |
+| [git_worktree](git_worktree/) | Git worktree management (list, add, remove, prune, lock, unlock) |
+| [diff_analyzer](diff_analyzer/) | Structured diff analysis (files, hunks, binary detection, renames) |
+| [json_schema_validator](json_schema_validator/) | JSON Schema validation and inference from data |
+| [http_probe](http_probe/) | HTTP endpoint probing (status, timing, TLS, headers, redirects) |
+| [man_page_reader](man_page_reader/) | Parse man pages into structured agent-friendly JSON |
+| [project_manifest_reader](project_manifest_reader/) | Cross-ecosystem project manifest reader (Node, Rust, Python, Go, Java, Ruby) |
 
 ## Philosophy
 
