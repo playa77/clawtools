@@ -13,6 +13,7 @@ CHECK_TLS=true
 HEADERS_ONLY=false
 CUSTOM_HEADERS=()
 METHOD="GET"
+ALLOW_PRIVATE=false
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -24,6 +25,7 @@ while [[ $# -gt 0 ]]; do
         --head)         HEADERS_ONLY=true; shift ;;
         --method)       METHOD="$2"; shift 2 ;;
         --header)       CUSTOM_HEADERS+=("$2"); shift 2 ;;
+        --allow-private) ALLOW_PRIVATE=true; shift ;;
         -*)             echo '{"error":"unknown option '"$1"'"}' >&2; exit 1 ;;
         *)              URL="$1"; shift ;;
     esac
@@ -43,6 +45,7 @@ Options:
   --head                HEAD request only (faster)
   --method <method>     HTTP method (default: GET)
   --header <header>     Custom header (repeatable)
+  --allow-private       Allow probing private/loopback IPs (SSRF bypass)
 
 Output JSON:
   {
@@ -63,6 +66,50 @@ Examples:
   http_probe.sh --header "Authorization: Bearer token" https://api.example.com
 EOF
     exit 1
+fi
+
+# SSRF protection: block private/loopback IPs unless --allow-private
+check_ssrf() {
+    local url="$1"
+    # Extract hostname from URL
+    local host
+    host=$(echo "$url" | sed -E 's|^[a-z]+://([^/:]+).*|\1|' | sed 's/\[//;s/\]//')
+
+    # Resolve hostname to IP if needed
+    local ip="$host"
+    if ! echo "$host" | grep -qP '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'; then
+        ip=$(getent hosts "$host" 2>/dev/null | awk '{print $1}' | head -1 || echo "")
+        if [[ -z "$ip" ]]; then
+            # Can't resolve — let curl handle it (it will fail gracefully)
+            return 0
+        fi
+    fi
+
+    # Check private/loopback/link-local ranges
+    if [[ "$ip" =~ ^127\. ]]; then
+        return 1  # Loopback
+    elif [[ "$ip" =~ ^10\. ]]; then
+        return 1  # Private 10.0.0.0/8
+    elif [[ "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[01])\. ]]; then
+        return 1  # Private 172.16.0.0/12
+    elif [[ "$ip" =~ ^192\.168\. ]]; then
+        return 1  # Private 192.168.0.0/16
+    elif [[ "$ip" =~ ^169\.254\. ]]; then
+        return 1  # Link-local / cloud metadata
+    elif [[ "$ip" == "::1" ]]; then
+        return 1  # IPv6 loopback
+    elif [[ "$ip" =~ ^fc|^fd ]]; then
+        return 1  # IPv6 unique local
+    fi
+
+    return 0
+}
+
+if [[ "$ALLOW_PRIVATE" != "true" ]]; then
+    if ! check_ssrf "$URL"; then
+        echo '{"error":"SSRF blocked: private/loopback IP not allowed (use --allow-private to override)","url":"'"$URL"'"}' >&2
+        exit 1
+    fi
 fi
 
 # Build curl args

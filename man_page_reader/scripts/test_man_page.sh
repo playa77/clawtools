@@ -126,6 +126,20 @@ fi
 
 echo ""
 
+echo "=== argument injection protection ==="
+
+# Reject command name starting with dash
+r=$($MANPAGE -K 2>&1) || true
+error=$(echo "$r" | jq -r '.error // empty' 2>/dev/null)
+[[ "$error" == *"must not start with dash"* ]] && pass "dash-prefixed command rejected" || fail "dash injection" "$error" "invalid command name"
+
+# Reject section starting with dash
+r=$($MANPAGE --section -K ls 2>&1) || true
+error=$(echo "$r" | jq -r '.error // empty' 2>/dev/null)
+[[ "$error" == *"must not start with dash"* ]] && pass "dash-prefixed section rejected" || fail "section injection" "$error" "must not start with dash"
+
+echo ""
+
 # --- summary ---
 echo "=============================="
 echo "Results: $PASS passed, $FAIL failed"

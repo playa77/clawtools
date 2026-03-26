@@ -39,6 +39,23 @@ get_diff() {
     if [[ -n "$INPUT_FILE" && "$INPUT_FILE" != "-" ]]; then
         cat "$INPUT_FILE"
     elif [[ -n "$REPO" || -n "$FROM_REF" || "$STAGED" == "true" || -n "$FILE_PATH" ]]; then
+        # Reject paths starting with dash (argument injection for git)
+        if [[ -n "$REPO" && "$REPO" == -* ]]; then
+            echo '{"error":"repo path must not start with dash"}' >&2
+            exit 1
+        fi
+        if [[ -n "$FROM_REF" && "$FROM_REF" == -* ]]; then
+            echo '{"error":"from ref must not start with dash"}' >&2
+            exit 1
+        fi
+        if [[ -n "$TO_REF" && "$TO_REF" == -* ]]; then
+            echo '{"error":"to ref must not start with dash"}' >&2
+            exit 1
+        fi
+        if [[ -n "$FILE_PATH" && "$FILE_PATH" == -* ]]; then
+            echo '{"error":"file path must not start with dash"}' >&2
+            exit 1
+        fi
         local args=("diff")
         if [[ "$STAGED" == "true" ]]; then
             args+=("--cached")

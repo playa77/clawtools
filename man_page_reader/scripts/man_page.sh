@@ -8,6 +8,10 @@
 
 set -uo pipefail
 
+# Prevent interactive pager from launching (safety: prevents shell escape via less)
+export MANPAGER=cat
+export PAGER=cat
+
 MAN_CMD=""
 MAN_SECTION=""
 FILE_PATH=""
@@ -18,7 +22,12 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --file)    FILE_PATH="$2"; shift 2 ;;
         --section) MAN_SECTION="$2"; shift 2 ;;
-        -*)        echo '{"error":"unknown option '"$1"'"}' >&2; exit 1 ;;
+        -*)
+            # If it looks like a command name (multi-char or not a known flag pattern),
+            # reject as argument injection rather than unknown option
+            echo '{"error":"invalid command name (must not start with dash)","command":"'"$1"'"}' >&2
+            exit 1
+            ;;
         *)
             if [[ -z "$MAN_CMD" ]]; then
                 if [[ "$1" =~ ^[0-9]$ ]]; then
@@ -34,6 +43,18 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Reject argument injection: command names starting with dash
+if [[ -n "$MAN_CMD" && "$MAN_CMD" == -* ]]; then
+    echo '{"error":"invalid command name (must not start with dash)","command":"'"$MAN_CMD"'"}' >&2
+    exit 1
+fi
+
+# Reject section injection: section values starting with dash
+if [[ -n "$MAN_SECTION" && "$MAN_SECTION" == -* ]]; then
+    echo '{"error":"invalid section (must not start with dash)","section":"'"$MAN_SECTION"'"}' >&2
+    exit 1
+fi
 
 if [[ -z "$MAN_CMD" && -z "$FILE_PATH" ]]; then
     cat >&2 <<'EOF'

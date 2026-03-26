@@ -9,6 +9,62 @@ set -euo pipefail
 json_ok() { echo "$1"; }
 json_err() { echo "$1" >&2; return 1; }
 
+# Validate path is not dangerous (path traversal, sensitive dirs)
+validate_path() {
+    local path="$1"
+    local action="${2:-use}"
+
+    # Reject empty paths
+    if [[ -z "$path" ]]; then
+        json_err '{"error":"path is required"}'
+        return 1
+    fi
+
+    # Reject paths starting with dash (argument injection)
+    if [[ "$path" == -* ]]; then
+        json_err '{"error":"invalid path (must not start with dash)","path":"'"$path"'"}'
+        return 1
+    fi
+
+    # Resolve to absolute path
+    local resolved
+    if [[ -d "$path" ]]; then
+        resolved=$(cd "$path" && pwd -P 2>/dev/null) || true
+    else
+        # For paths that don't exist yet, resolve parent
+        local parent
+        parent=$(dirname "$path")
+        if [[ -d "$parent" ]]; then
+            resolved=$(cd "$parent" && pwd -P 2>/dev/null)/$(basename "$path") || true
+        else
+            resolved="$path"
+        fi
+    fi
+
+    # Block access to sensitive system directories
+    local blocked_dirs=("/etc" "/sys" "/proc" "/dev" "/boot" "/usr" "/var/lib" "/lib" "/sbin" "/bin")
+    for bd in "${blocked_dirs[@]}"; do
+        if [[ "$resolved" == "$bd" || "$resolved" == "$bd/"* ]]; then
+            json_err '{"error":"path '"$action"' not allowed: blocked system directory","path":"'"$path"'"}'
+            return 1
+        fi
+    done
+
+    # Block home directory dotfiles (.ssh, .gnupg, etc.)
+    local home="$HOME"
+    if [[ -n "$home" ]]; then
+        local sensitive_dirs=(".ssh" ".gnupg" ".aws" ".config" ".kube")
+        for sd in "${sensitive_dirs[@]}"; do
+            if [[ "$resolved" == "$home/$sd" || "$resolved" == "$home/$sd/"* ]]; then
+                json_err '{"error":"path '"$action"' not allowed: sensitive directory","path":"'"$path"'"}'
+                return 1
+            fi
+        done
+    fi
+
+    return 0
+}
+
 # Ensure we're in a git repo with worktree support
 ensure_git_repo() {
     if ! git rev-parse --git-dir &>/dev/null; then
@@ -76,6 +132,8 @@ cmd_add() {
         return 1
     fi
 
+    validate_path "$path" "add" || return 1
+
     local args=()
     if [[ -n "$branch" ]]; then
         args+=("-b" "$branch")
@@ -112,6 +170,8 @@ cmd_remove() {
         json_err '{"error":"path is required","usage":"worktree.sh remove <path> [--force]"}'
         return 1
     fi
+
+    validate_path "$path" "remove" || return 1
 
     local args=("remove")
     if [[ "$force" == "--force" || "$force" == "-f" ]]; then
@@ -164,6 +224,8 @@ cmd_lock() {
         return 1
     fi
 
+    validate_path "$path" "lock" || return 1
+
     local output
     if output=$(git worktree lock "$path" 2>&1); then
         json_ok "$(printf '{"action":"lock","path":"%s","success":true}' "$path")"
@@ -183,6 +245,8 @@ cmd_unlock() {
         json_err '{"error":"path is required","usage":"worktree.sh unlock <path>"}'
         return 1
     fi
+
+    validate_path "$path" "unlock" || return 1
 
     local output
     if output=$(git worktree unlock "$path" 2>&1); then

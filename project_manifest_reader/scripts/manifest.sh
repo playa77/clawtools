@@ -25,6 +25,12 @@ if [[ ! -d "$PROJECT_ROOT" ]]; then
     exit 1
 fi
 
+# Reject argument injection: paths/options starting with dash
+if [[ "$PROJECT_ROOT" == -* ]]; then
+    echo '{"error":"project root must not start with dash"}' >&2
+    exit 1
+fi
+
 # Normalize path
 PROJECT_ROOT=$(cd "$PROJECT_ROOT" && pwd -P)
 

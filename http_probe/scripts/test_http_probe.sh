@@ -137,6 +137,34 @@ fi
 
 echo ""
 
+echo "=== SSRF protection ==="
+# Block localhost by default
+r=$($PROBE --no-tls --timeout 3 http://127.0.0.1:8080/ 2>&1) || true
+error=$(echo "$r" | jq -r '.error // empty' 2>/dev/null)
+[[ "$error" == *"SSRF"* ]] && pass "localhost blocked by SSRF check" || fail "SSRF localhost" "$error" "contains SSRF"
+
+# Block 169.254.169.254 (cloud metadata)
+r=$($PROBE --no-tls --timeout 3 http://169.254.169.254/latest/meta-data/ 2>&1) || true
+error=$(echo "$r" | jq -r '.error // empty' 2>/dev/null)
+[[ "$error" == *"SSRF"* ]] && pass "cloud metadata endpoint blocked" || fail "SSRF metadata" "$error" "contains SSRF"
+
+# Block 10.x.x.x private range
+r=$($PROBE --no-tls --timeout 3 http://10.0.0.1:8080/ 2>&1) || true
+error=$(echo "$r" | jq -r '.error // empty' 2>/dev/null)
+[[ "$error" == *"SSRF"* ]] && pass "10.x private range blocked" || fail "SSRF 10.x" "$error" "contains SSRF"
+
+# Block 192.168.x.x private range
+r=$($PROBE --no-tls --timeout 3 http://192.168.1.1:8080/ 2>&1) || true
+error=$(echo "$r" | jq -r '.error // empty' 2>/dev/null)
+[[ "$error" == *"SSRF"* ]] && pass "192.168.x private range blocked" || fail "SSRF 192.168" "$error" "contains SSRF"
+
+# --allow-private bypasses the check (still fails to connect, but not blocked)
+r=$($PROBE --no-tls --allow-private --timeout 3 http://127.0.0.1:9999/ 2>&1) || true
+error=$(echo "$r" | jq -r '.error // empty' 2>/dev/null)
+[[ "$error" != *"SSRF"* ]] && pass "--allow-private bypasses SSRF check" || fail "--allow-private" "$error" "no SSRF"
+
+echo ""
+
 echo "=== error handling ==="
 $PROBE 2>/dev/null && fail "no args should show usage" "success" "error" || pass "no args shows usage"
 

@@ -158,6 +158,25 @@ $WORKTREE info /nonexistent/path 2>/dev/null && fail "info nonexistent should fa
 
 echo ""
 
+echo "=== path validation ==="
+
+# Reject dash-prefixed paths (argument injection)
+r=$($WORKTREE add "-f" 2>&1) || true
+error=$(echo "$r" | grep -o '"error":"[^"]*"' | head -1 || echo "")
+[[ "$error" == *"must not start with dash"* ]] && pass "dash-prefixed path rejected" || fail "dash path" "$error" "dash rejected"
+
+# Reject sensitive directories
+r=$($WORKTREE add /etc/worktree-test 2>&1) || true
+error=$(echo "$r" | grep -o '"error":"[^"]*"' | head -1 || echo "")
+[[ "$error" == *"blocked system directory"* ]] && pass "/etc path rejected" || fail "/etc path" "$error" "blocked"
+
+# Reject .ssh access
+r=$($WORKTREE add "$HOME/.ssh/worktree-test" 2>&1) || true
+error=$(echo "$r" | grep -o '"error":"[^"]*"' | head -1 || echo "")
+[[ "$error" == *"sensitive directory"* ]] && pass ".ssh path rejected" || fail ".ssh path" "$error" "sensitive"
+
+echo ""
+
 # --- summary ---
 echo "=============================="
 echo "Results: $PASS passed, $FAIL failed"
